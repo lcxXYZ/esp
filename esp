@@ -1,5 +1,5 @@
 -- Toggle setting
-getgenv().espEnabled = true -- set to false to disable ESP
+getgenv().espEnabled = false -- set to false to disable ESP
 
 -- settings
 local settings = {
