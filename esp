@@ -1,118 +1,196 @@
--- Toggle setting
-getgenv().espEnabled = false -- set to false to disable ESP
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Camera = workspace.CurrentCamera
 
--- settings
-local settings = {
-   defaultcolor = Color3.fromRGB(255,0,0),
-   teamcheck = false,
-   teamcolor = true
-};
+local espBoxes = {}
+local highlights = {}
 
--- services
-local runService = game:GetService("RunService");
-local players = game:GetService("Players");
+-- Settings you can change anytime like this:
+-- getgenv().ESPSettings.Enabled = true/false
+-- getgenv().ESPSettings.Chams = true/false
+-- getgenv().ESPSettings.Color = Color3.fromRGB(255, 0, 0)
+getgenv().ESPSettings = getgenv().ESPSettings or {
+    Enabled = false,
+    Chams = false,
+    Color = Color3.fromRGB(255, 0, 0),
+}
 
--- variables
-local localPlayer = players.LocalPlayer;
-local camera = workspace.CurrentCamera;
+-- Get all relevant character parts to cover for the box & chams
+local function getRelevantParts(character)
+    local parts = {}
 
--- functions
-local newVector2, newColor3, newDrawing = Vector2.new, Color3.new, Drawing.new;
-local tan, rad = math.tan, math.rad;
-local round = function(...) local a = {}; for i,v in next, table.pack(...) do a[i] = math.round(v); end return unpack(a); end;
-local wtvp = function(...) local a, b = camera.WorldToViewportPoint(camera, ...) return newVector2(a.X, a.Y), b, a.Z end;
+    local root = character:FindFirstChild("HumanoidRootPart")
+    local head = character:FindFirstChild("Head")
 
-local espCache = {};
-local function createEsp(player)
-   local drawings = {};
-   
-   drawings.box = newDrawing("Square");
-   drawings.box.Thickness = 1;
-   drawings.box.Filled = false;
-   drawings.box.Color = settings.defaultcolor;
-   drawings.box.Visible = false;
-   drawings.box.ZIndex = 2;
+    if root then table.insert(parts, root) end
+    if head then table.insert(parts, head) end
 
-   drawings.boxoutline = newDrawing("Square");
-   drawings.boxoutline.Thickness = 3;
-   drawings.boxoutline.Filled = false;
-   drawings.boxoutline.Color = newColor3();
-   drawings.boxoutline.Visible = false;
-   drawings.boxoutline.ZIndex = 1;
+    local isR15 = character:FindFirstChild("UpperTorso") ~= nil
 
-   espCache[player] = drawings;
+    if isR15 then
+        local possibleParts = {
+            "LeftUpperArm", "RightUpperArm",
+            "LeftLowerArm", "RightLowerArm",
+            "LeftHand", "RightHand",
+            "LeftUpperLeg", "RightUpperLeg",
+            "LeftLowerLeg", "RightLowerLeg",
+            "LeftFoot", "RightFoot",
+            "UpperTorso", "LowerTorso",
+        }
+        for _, partName in pairs(possibleParts) do
+            local part = character:FindFirstChild(partName)
+            if part then
+                table.insert(parts, part)
+            end
+        end
+    else
+        local possibleParts = {
+            "Left Arm", "Right Arm",
+            "Left Leg", "Right Leg",
+            "Torso",
+        }
+        for _, partName in pairs(possibleParts) do
+            local part = character:FindFirstChild(partName)
+            if part then
+                table.insert(parts, part)
+            end
+        end
+    end
+
+    return parts
 end
 
-local function removeEsp(player)
-   if rawget(espCache, player) then
-       for _, drawing in next, espCache[player] do
-           drawing:Remove();
-       end
-       espCache[player] = nil;
-   end
+-- Create a drawing square box
+local function createBox()
+    local box = Drawing.new("Square")
+    box.Visible = false
+    box.Color = getgenv().ESPSettings.Color
+    box.Thickness = 2
+    box.Filled = false
+    return box
 end
 
-local function updateEsp(player, esp)
-   local character = player and player.Character;
-   if character then
-       local cframe = character:GetModelCFrame();
-       local position, visible, depth = wtvp(cframe.Position);
+-- Create Highlight instance for chams
+local function createHighlight(character)
+    if highlights[character] then return highlights[character] end
 
-       -- respect espEnabled flag
-       visible = visible and getgenv().espEnabled
+    local highlight = Instance.new("Highlight")
+    highlight.Adornee = character
+    highlight.FillColor = getgenv().ESPSettings.Color
+    highlight.OutlineColor = getgenv().ESPSettings.Color
+    highlight.FillTransparency = 0.5
+    highlight.OutlineTransparency = 0
+    highlight.Parent = game.CoreGui -- or workspace if CoreGui is restricted
 
-       esp.box.Visible = visible;
-       esp.boxoutline.Visible = visible;
-
-       if cframe and visible then
-           local scaleFactor = 1 / (depth * tan(rad(camera.FieldOfView / 2)) * 2) * 1000;
-           local width, height = round(4 * scaleFactor, 5 * scaleFactor);
-           local x, y = round(position.X, position.Y);
-
-           esp.box.Size = newVector2(width, height);
-           esp.box.Position = newVector2(round(x - width / 2, y - height / 2));
-           esp.box.Color = settings.teamcolor and player.TeamColor.Color or settings.defaultcolor;
-
-           esp.boxoutline.Size = esp.box.Size;
-           esp.boxoutline.Position = esp.box.Position;
-       end
-   else
-       esp.box.Visible = false;
-       esp.boxoutline.Visible = false;
-   end
+    highlights[character] = highlight
+    return highlight
 end
 
--- main
-for _, player in next, players:GetPlayers() do
-   if player ~= localPlayer then
-       createEsp(player);
-   end
+-- Remove box ESP for player
+local function removeBox(player)
+    if espBoxes[player] then
+        espBoxes[player]:Remove()
+        espBoxes[player] = nil
+    end
 end
 
-players.PlayerAdded:Connect(function(player)
-   createEsp(player);
-end);
+-- Remove highlight chams for character
+local function removeHighlight(character)
+    if highlights[character] then
+        highlights[character]:Destroy()
+        highlights[character] = nil
+    end
+end
 
-players.PlayerRemoving:Connect(function(player)
-   removeEsp(player);
+-- Cleanup when players leave or characters die
+Players.PlayerRemoving:Connect(function(player)
+    removeBox(player)
+    if player.Character then
+        removeHighlight(player.Character)
+    end
 end)
 
-runService:BindToRenderStep("esp", Enum.RenderPriority.Camera.Value, function()
-   if not getgenv().espEnabled then
-       for _, esp in pairs(espCache) do
-           esp.box.Visible = false
-           esp.boxoutline.Visible = false
-       end
-       return
-   end
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterRemoving:Connect(function(char)
+        removeHighlight(char)
+    end)
+end)
 
-   for player, drawings in next, espCache do
-       if settings.teamcheck and player.Team == localPlayer.Team then
-           continue;
-       end
+-- Main update loop to handle ESP boxes & chams
+RunService.RenderStepped:Connect(function()
+    if not getgenv().ESPSettings.Enabled then
+        for _, box in pairs(espBoxes) do
+            box.Visible = false
+        end
+        for _, highlight in pairs(highlights) do
+            highlight.Enabled = false
+        end
+        return
+    end
 
-       if drawings and player ~= localPlayer then
-           updateEsp(player, drawings);
-       end
-   end
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= Players.LocalPlayer and player.Character then
+            local character = player.Character
+            local parts = getRelevantParts(character)
+
+            local points = {}
+            local allVisible = true
+
+            for _, part in pairs(parts) do
+                local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
+                if onScreen then
+                    table.insert(points, Vector2.new(pos.X, pos.Y))
+                else
+                    allVisible = false
+                    break
+                end
+            end
+
+            -- Handle box ESP
+            local box = espBoxes[player]
+            if not box then
+                box = createBox()
+                espBoxes[player] = box
+            end
+
+            box.Color = getgenv().ESPSettings.Color
+
+            if allVisible and #points > 0 then
+                local minX, maxX = points[1].X, points[1].X
+                local minY, maxY = points[1].Y, points[1].Y
+
+                for i = 2, #points do
+                    local p = points[i]
+                    if p.X < minX then minX = p.X end
+                    if p.X > maxX then maxX = p.X end
+                    if p.Y < minY then minY = p.Y end
+                    if p.Y > maxY then maxY = p.Y end
+                end
+
+                box.Position = Vector2.new(minX, minY)
+                box.Size = Vector2.new(maxX - minX, maxY - minY)
+                box.Visible = true
+            else
+                box.Visible = false
+            end
+
+            -- Handle chams
+            if getgenv().ESPSettings.Chams then
+                local highlight = highlights[character] or createHighlight(character)
+                highlight.Enabled = true
+                highlight.FillColor = getgenv().ESPSettings.Color
+                highlight.OutlineColor = getgenv().ESPSettings.Color
+                highlight.FillTransparency = 0.5
+                highlight.OutlineTransparency = 0
+            else
+                if highlights[character] then
+                    highlights[character].Enabled = false
+                end
+            end
+        else
+            if espBoxes[player] then
+                espBoxes[player].Visible = false
+            end
+        end
+    end
 end)
