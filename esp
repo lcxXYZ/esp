@@ -11,11 +11,11 @@ local rainbowChams = {}
 
 -- Rainbow color over time
 local function getRainbowColor(t)
-	return Color3.new(
-		math.sin(t) * 0.5 + 0.5,
-		math.sin(t + 2) * 0.5 + 0.5,
-		math.sin(t + 4) * 0.5 + 0.5
-	)
+    return Color3.new(
+        math.sin(t) * 0.5 + 0.5,
+        math.sin(t + 2) * 0.5 + 0.5,
+        math.sin(t + 4) * 0.5 + 0.5
+    )
 end
 
 -- Static color fallback (purple)
@@ -23,56 +23,87 @@ local staticColor = Color3.fromRGB(170, 0, 255)
 
 -- Create or reuse highlight
 local function addChamToCharacter(char)
-	if char:FindFirstChild("RainbowCham") then return end
-	if not getgenv().ChamsEnabled then return end
+    if char:FindFirstChild("RainbowCham") then return end
+    if not getgenv().ChamsEnabled then return end
 
-	local highlight = Instance.new("Highlight")
-	highlight.Name = "RainbowCham"
-	highlight.Adornee = char
-	highlight.FillTransparency = 0.25
-	highlight.OutlineTransparency = 0
-	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-	highlight.OutlineColor = Color3.new(1, 1, 1)
-	highlight.FillColor = staticColor
-	highlight.Parent = char
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "RainbowCham"
+    highlight.Adornee = char
+    highlight.FillTransparency = 0.25
+    highlight.OutlineTransparency = 0
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    highlight.OutlineColor = Color3.new(1, 1, 1)
+    highlight.FillColor = staticColor
+    highlight.Parent = char
 
-	table.insert(rainbowChams, highlight)
+    table.insert(rainbowChams, highlight)
 end
 
--- Track characters
+-- Refresh all highlights (used when toggling on/off)
+local function refreshChams()
+    -- Destroy all existing highlights
+    for i = #rainbowChams, 1, -1 do
+        local cham = rainbowChams[i]
+        if cham and cham.Parent then
+            cham:Destroy()
+        end
+        table.remove(rainbowChams, i)
+    end
+
+    -- Re-add highlights if enabled
+    if getgenv().ChamsEnabled then
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character then
+                addChamToCharacter(player.Character)
+            end
+        end
+    end
+end
+
+-- Track characters for new players
 local function setupPlayer(player)
-	if player == LocalPlayer then return end
+    if player == LocalPlayer then return end
 
-	player.CharacterAdded:Connect(addChamToCharacter)
-	if player.Character then
-		addChamToCharacter(player.Character)
-	end
+    player.CharacterAdded:Connect(function(char)
+        if getgenv().ChamsEnabled then
+            addChamToCharacter(char)
+        end
+    end)
+
+    if player.Character and getgenv().ChamsEnabled then
+        addChamToCharacter(player.Character)
+    end
 end
 
--- Loop through all players
+-- Setup all current players
 for _, player in ipairs(Players:GetPlayers()) do
-	setupPlayer(player)
+    setupPlayer(player)
 end
 Players.PlayerAdded:Connect(setupPlayer)
 
--- Update loop
-RunService.Heartbeat:Connect(function()
-	for i = #rainbowChams, 1, -1 do
-		local cham = rainbowChams[i]
+-- Store previous enabled state to detect toggle changes
+local lastEnabledState = getgenv().ChamsEnabled
 
-		if not getgenv().ChamsEnabled then
-			if cham and cham.Parent then
-				cham:Destroy()
-			end
-			table.remove(rainbowChams, i)
-		elseif cham and cham.Parent then
-			if getgenv().Rainbow then
-				cham.FillColor = getRainbowColor(tick() * 2.5)
-			else
-				cham.FillColor = staticColor
-			end
-		else
-			table.remove(rainbowChams, i)
-		end
-	end
+RunService.Heartbeat:Connect(function()
+    -- If toggle changed, refresh highlights
+    if getgenv().ChamsEnabled ~= lastEnabledState then
+        lastEnabledState = getgenv().ChamsEnabled
+        refreshChams()
+    end
+
+    -- Update colors only if enabled
+    if getgenv().ChamsEnabled then
+        for i = #rainbowChams, 1, -1 do
+            local cham = rainbowChams[i]
+            if cham and cham.Parent then
+                if getgenv().Rainbow then
+                    cham.FillColor = getRainbowColor(tick() * 2.5)
+                else
+                    cham.FillColor = staticColor
+                end
+            else
+                table.remove(rainbowChams, i)
+            end
+        end
+    end
 end)
