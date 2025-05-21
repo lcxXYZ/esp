@@ -1,196 +1,78 @@
+-- ✅ Setup globals
+getgenv().ChamsEnabled = false
+getgenv().Rainbow = false
+
+-- Services
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
 
-local espBoxes = {}
-local highlights = {}
+local rainbowChams = {}
 
--- Settings you can change anytime like this:
--- getgenv().ESPSettings.Enabled = true/false
--- getgenv().ESPSettings.Chams = true/false
--- getgenv().ESPSettings.Color = Color3.fromRGB(255, 0, 0)
-getgenv().ESPSettings = getgenv().ESPSettings or {
-    Enabled = false,
-    Chams = false,
-    Color = Color3.fromRGB(255, 0, 0),
-}
-
--- Get all relevant character parts to cover for the box & chams
-local function getRelevantParts(character)
-    local parts = {}
-
-    local root = character:FindFirstChild("HumanoidRootPart")
-    local head = character:FindFirstChild("Head")
-
-    if root then table.insert(parts, root) end
-    if head then table.insert(parts, head) end
-
-    local isR15 = character:FindFirstChild("UpperTorso") ~= nil
-
-    if isR15 then
-        local possibleParts = {
-            "LeftUpperArm", "RightUpperArm",
-            "LeftLowerArm", "RightLowerArm",
-            "LeftHand", "RightHand",
-            "LeftUpperLeg", "RightUpperLeg",
-            "LeftLowerLeg", "RightLowerLeg",
-            "LeftFoot", "RightFoot",
-            "UpperTorso", "LowerTorso",
-        }
-        for _, partName in pairs(possibleParts) do
-            local part = character:FindFirstChild(partName)
-            if part then
-                table.insert(parts, part)
-            end
-        end
-    else
-        local possibleParts = {
-            "Left Arm", "Right Arm",
-            "Left Leg", "Right Leg",
-            "Torso",
-        }
-        for _, partName in pairs(possibleParts) do
-            local part = character:FindFirstChild(partName)
-            if part then
-                table.insert(parts, part)
-            end
-        end
-    end
-
-    return parts
+-- Rainbow color over time
+local function getRainbowColor(t)
+	return Color3.new(
+		math.sin(t) * 0.5 + 0.5,
+		math.sin(t + 2) * 0.5 + 0.5,
+		math.sin(t + 4) * 0.5 + 0.5
+	)
 end
 
--- Create a drawing square box
-local function createBox()
-    local box = Drawing.new("Square")
-    box.Visible = false
-    box.Color = getgenv().ESPSettings.Color
-    box.Thickness = 2
-    box.Filled = false
-    return box
+-- Static color fallback (purple)
+local staticColor = Color3.fromRGB(170, 0, 255)
+
+-- Create or reuse highlight
+local function addChamToCharacter(char)
+	if char:FindFirstChild("RainbowCham") then return end
+	if not getgenv().ChamsEnabled then return end
+
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "RainbowCham"
+	highlight.Adornee = char
+	highlight.FillTransparency = 0.25
+	highlight.OutlineTransparency = 0
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.OutlineColor = Color3.new(1, 1, 1)
+	highlight.FillColor = staticColor
+	highlight.Parent = char
+
+	table.insert(rainbowChams, highlight)
 end
 
--- Create Highlight instance for chams
-local function createHighlight(character)
-    if highlights[character] then return highlights[character] end
+-- Track characters
+local function setupPlayer(player)
+	if player == LocalPlayer then return end
 
-    local highlight = Instance.new("Highlight")
-    highlight.Adornee = character
-    highlight.FillColor = getgenv().ESPSettings.Color
-    highlight.OutlineColor = getgenv().ESPSettings.Color
-    highlight.FillTransparency = 0.5
-    highlight.OutlineTransparency = 0
-    highlight.Parent = game.CoreGui -- or workspace if CoreGui is restricted
-
-    highlights[character] = highlight
-    return highlight
+	player.CharacterAdded:Connect(addChamToCharacter)
+	if player.Character then
+		addChamToCharacter(player.Character)
+	end
 end
 
--- Remove box ESP for player
-local function removeBox(player)
-    if espBoxes[player] then
-        espBoxes[player]:Remove()
-        espBoxes[player] = nil
-    end
+-- Loop through all players
+for _, player in ipairs(Players:GetPlayers()) do
+	setupPlayer(player)
 end
+Players.PlayerAdded:Connect(setupPlayer)
 
--- Remove highlight chams for character
-local function removeHighlight(character)
-    if highlights[character] then
-        highlights[character]:Destroy()
-        highlights[character] = nil
-    end
-end
+-- Update loop
+RunService.Heartbeat:Connect(function()
+	for i = #rainbowChams, 1, -1 do
+		local cham = rainbowChams[i]
 
--- Cleanup when players leave or characters die
-Players.PlayerRemoving:Connect(function(player)
-    removeBox(player)
-    if player.Character then
-        removeHighlight(player.Character)
-    end
-end)
-
-Players.PlayerAdded:Connect(function(player)
-    player.CharacterRemoving:Connect(function(char)
-        removeHighlight(char)
-    end)
-end)
-
--- Main update loop to handle ESP boxes & chams
-RunService.RenderStepped:Connect(function()
-    if not getgenv().ESPSettings.Enabled then
-        for _, box in pairs(espBoxes) do
-            box.Visible = false
-        end
-        for _, highlight in pairs(highlights) do
-            highlight.Enabled = false
-        end
-        return
-    end
-
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= Players.LocalPlayer and player.Character then
-            local character = player.Character
-            local parts = getRelevantParts(character)
-
-            local points = {}
-            local allVisible = true
-
-            for _, part in pairs(parts) do
-                local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
-                if onScreen then
-                    table.insert(points, Vector2.new(pos.X, pos.Y))
-                else
-                    allVisible = false
-                    break
-                end
-            end
-
-            -- Handle box ESP
-            local box = espBoxes[player]
-            if not box then
-                box = createBox()
-                espBoxes[player] = box
-            end
-
-            box.Color = getgenv().ESPSettings.Color
-
-            if allVisible and #points > 0 then
-                local minX, maxX = points[1].X, points[1].X
-                local minY, maxY = points[1].Y, points[1].Y
-
-                for i = 2, #points do
-                    local p = points[i]
-                    if p.X < minX then minX = p.X end
-                    if p.X > maxX then maxX = p.X end
-                    if p.Y < minY then minY = p.Y end
-                    if p.Y > maxY then maxY = p.Y end
-                end
-
-                box.Position = Vector2.new(minX, minY)
-                box.Size = Vector2.new(maxX - minX, maxY - minY)
-                box.Visible = true
-            else
-                box.Visible = false
-            end
-
-            -- Handle chams
-            if getgenv().ESPSettings.Chams then
-                local highlight = highlights[character] or createHighlight(character)
-                highlight.Enabled = true
-                highlight.FillColor = getgenv().ESPSettings.Color
-                highlight.OutlineColor = getgenv().ESPSettings.Color
-                highlight.FillTransparency = 0.5
-                highlight.OutlineTransparency = 0
-            else
-                if highlights[character] then
-                    highlights[character].Enabled = false
-                end
-            end
-        else
-            if espBoxes[player] then
-                espBoxes[player].Visible = false
-            end
-        end
-    end
+		if not getgenv().ChamsEnabled then
+			if cham and cham.Parent then
+				cham:Destroy()
+			end
+			table.remove(rainbowChams, i)
+		elseif cham and cham.Parent then
+			if getgenv().Rainbow then
+				cham.FillColor = getRainbowColor(tick() * 2.5)
+			else
+				cham.FillColor = staticColor
+			end
+		else
+			table.remove(rainbowChams, i)
+		end
+	end
 end)
