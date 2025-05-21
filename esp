@@ -1,6 +1,6 @@
 -- ✅ Setup globals
-getgenv().ChamsEnabled = false
-getgenv().Rainbow = false
+getgenv().ChamsEnabled = true
+getgenv().Rainbow = true
 
 -- Services
 local Players = game:GetService("Players")
