@@ -3318,7 +3318,7 @@ do
 				Library.MainFrame = Items["MainFrame"].Instance
 
 				Items["MainFrame"]:MakeDraggable()
-				Items["MainFrame"]:MakeResizeable(Vector2New(621, 542), Vector2New(9999, 9999))
+				Items["MainFrame"]:MakeResizeable(Vector2New(800, 800), Vector2New(9999, 9999))
 
 				Items["UIStroke"] = Instances:Create("UIStroke", {
 					Parent = Items["MainFrame"].Instance,
